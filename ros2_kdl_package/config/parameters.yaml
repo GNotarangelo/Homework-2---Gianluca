@@ -1,0 +1,10 @@
+Iiwa_pub_sub:
+  ros__parameters:
+    traj_duration: 1.5
+    acc_duration: 0.5
+    total_time: 0.15
+    trajectory_len: 150
+    Kp: 5
+    end_position.x: 0.2
+    end_position.y: -0.2
+    end_position.z: 0.1

@@ -1,0 +1,24 @@
+# aruco_params.yaml
+aruco_node:
+  ros__parameters:
+    # Camera Input Topics
+    image_topic: /camera
+    camera_info_topic: /camera/camera_info
+
+    # Tag
+    marker_size: 0.1
+    dictionary_id: DICT_4X4_50
+    
+    # Detection Parameters
+    publish_tf: true # Publish the tag's pose as a TF transform
+    
+    # The frame ID of the link the simulated camera is attached to
+    camera_frame: 'camera_link'
+    
+    # The prefix for the marker's published frame
+    marker_frame: 'arucotag'
+    
+    marker_id: 201
+    
+    #user@gianlu-victus:~/ros2_ws$ ros2 run aruco_ros single --ros-args -p  marker_id:=201 -p  marker_size:=0.10 -p camera_frame:="camera_link" -p marker_frame:="arucotag"
+
