@@ -522,7 +522,7 @@ class Iiwa_pub_sub : public rclcpp::Node
         int Kp;
         
         // Vision Control
-        rclcpp::Subscription<geometry_msgs:msg::PoseStamped>::SharedPtr arucoSubscriber_;
+        rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr arucoSubscriber_;
         bool aruco_pose_available_ = false;
         KDL::Frame cPo_frame_; // Pose of the tag relative to camera
         

@@ -5,65 +5,6 @@
 #include <Eigen/SVD>
 #include <iostream>
 
-// These functions convert KDL types to Eigen and handle necessary matrix math.
-
-
-//Converts a KDL Vector to an Eigen Vector3d.
- 
-Eigen::Vector3d toEigen(const KDL::Vector& kdl_vec) {
-    return Eigen::Vector3d(kdl_vec.x(), kdl_vec.y(), kdl_vec.z());
-}
-
-
-//Converts a KDL Rotation to an Eigen Matrix3d.
- 
-Eigen::Matrix3d toEigen(const KDL::Rotation& kdl_rot) {
-    Eigen::Matrix3d mat;
-    for (int i = 0; i < 3; ++i) {
-        for (int j = 0; j < 3; ++j) {
-            mat(i, j) = kdl_rot(i, j);
-        }
-    }
-    return mat;
-}
-
-
-//Calculates the skew-symmetric matrix S(v) of a vector v.
-
-Eigen::Matrix3d skew_symmetric(const Eigen::Vector3d& v) {
-    Eigen::Matrix3d S;
-    S <<  0.0, -v(2),  v(1),
-          v(2),  0.0, -v(0),
-         -v(1),  v(0),  0.0;
-    return S;
-}
-
-
-//Calculates the Moore-Penrose pseudoinverse using SVD.
-// mat: The input matrix.
-// tolerance: The tolerance below which singular values are treated as zero.
-
-Eigen::MatrixXd pseudoinverse(const Eigen::MatrixXd& mat, double tolerance = 1e-6) {
-    Eigen::JacobiSVD<Eigen::MatrixXd> svd(mat, Eigen::ComputeThinU | Eigen::ComputeThinV);
-    
-    // Extract U, V, and Sigma (singular values)
-    const Eigen::MatrixXd& U = svd.matrixU();
-    const Eigen::MatrixXd& V = svd.matrixV();
-    const Eigen::VectorXd& S = svd.singularValues();
-
-    // Calculate reciprocal of singular values and filter by tolerance
-    Eigen::VectorXd S_inv(S.size());
-    for (int i = 0; i < S.size(); ++i) {
-        if (S(i) > tolerance) {
-            S_inv(i) = 1.0 / S(i);
-        } else {
-            S_inv(i) = 0.0;
-        }
-    }
-
-    return V * S_inv.asDiagonal() * U.transpose();
-}
-
 
 //Calculates joint velocities (q_dot_0) to push joints away from limits.
 
@@ -205,7 +146,7 @@ Eigen::VectorXd KDLController::vision_ctrl(const KDL::Frame& cPo_frame) {
     L_inner.block<3, 3>(0, 0) = - (1.0 / norm_cPo) * P_s; 
     
     // Term 2: Angular velocity part (Rotational)
-    L_inner.block<3, 3>(0, 3) = - (1.0 / norm_cPo) * P_s * skew_symmetric(s); 
+    L_inner.block<3, 3>(0, 3) = - (1.0 / norm_cPo) * P_s * skew(s); 
 
     // L(s) = L_inner * R_6
     Eigen::Matrix<double, 3, 6> L_s = L_inner * R_6; 

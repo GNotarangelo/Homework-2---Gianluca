@@ -5,6 +5,12 @@
 #include "kdl_robot.h"
 #include "utils.h"
 
+//Vision Control
+#include <kdl/frames.hpp>
+#include <kdl/jacobian.hpp>
+
+Eigen::VectorXd compute_jnt_limit_avoidance(KDLRobot* robot_);
+
 class KDLController
 {
 
@@ -28,6 +34,12 @@ public:
                            
     Eigen::VectorXd velocity_ctrl_null(KDL::Frame &_desPos,
                                          double _Kpp, double _Kpo);
+                                         
+    //Vision Control
+    Eigen::MatrixXd getCameraJacobian();
+    Eigen::VectorXd vision_ctrl(const KDL::Frame& cPo_frame);
+
+
 
 private:
 

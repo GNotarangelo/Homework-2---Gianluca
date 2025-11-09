@@ -20,7 +20,7 @@ from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, Regi
 from launch.conditions import IfCondition, UnlessCondition
 from launch.event_handlers import OnProcessExit, OnProcessStart
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution, OrSubstitution
+from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution, OrSubstitution, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
@@ -397,15 +397,14 @@ def generate_launch_description():
         namespace=namespace,
         parameters=[
             {
-                # Use 'vision' command interface if 'vision_control' is true
-                'cmd_interface': [
-                    'vision' if LaunchConfiguration('vision_control') else LaunchConfiguration('command_interface')
-                ]
+		'cmd_interface': PythonExpression([
+    		"'vision' if '", vision_control, "' == 'true' else '", command_interface, "'"
+		])
             },
         ],
-        #condition=UnlessCondition(OrSubstitution(use_planning, use_servoing)),
+        # The node should run only in simulation or when not using MoveIt planning/servoing
+        condition=UnlessCondition(OrSubstitution(use_planning, use_servoing)),
     )
-	
 
 
     # Delay `joint_state_broadcaster` after spawn_entity
