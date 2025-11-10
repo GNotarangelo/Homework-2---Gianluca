@@ -15,7 +15,7 @@
 
     <include>
       <uri>
-        model://arucotag/model.sdf
+        model://arucotag
       </uri>
       <name>arucotag</name>
       <pose>0.2 -0.25 0.85 3.14 0.14 3.14</pose>

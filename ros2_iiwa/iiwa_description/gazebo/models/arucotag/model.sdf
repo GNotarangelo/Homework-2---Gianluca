@@ -3,24 +3,51 @@
   <model name='arucotag'>
     <static>true</static>
     <pose>0 0 0.001 0 0 0</pose>
-    <link name='base'>
-      <visual name='base_visual'>
+    <link name="link">
+      <inertial>
+        <pose>0 0 0 0 0 0</pose>
+        <mass>0.0001</mass>
+        <inertia>
+          <ixx>1.6667e-07</ixx>
+          <ixy>0.0</ixy>
+          <ixz>0.0</ixz>
+          <iyy>1.6667e-07</iyy>
+          <iyz>0.0</iyz>
+          <izz>1.6667e-07</izz>
+        </inertia>
+      </inertial>
+      <collision name="collision">
         <geometry>
-          <plane>
-            <normal>0 0 1</normal>
-            <size>0.1 0.1</size>
-          </plane>
+          <box><size>0.1 0.1 0.005</size></box>
+        </geometry>
+      </collision>
+
+      <visual name="visual_body">
+        <geometry>
+          <box><size>0.1 0.1 0.005</size></box>
         </geometry>
         <material>
+          <ambient>1 1 1 1</ambient>
           <diffuse>1 1 1 1</diffuse>
           <specular>0.4 0.4 0.4 1</specular>
+        </material>
+      </visual>
+
+      <visual name="visual_tag_face">
+        <pose>0 0 0.003 0 0 0</pose> 
+        <geometry>
+          <box><size>0.1 0.1 0.001</size></box>
+        </geometry>
+        <material>
           <pbr>
             <metal>
-              <albedo_map>model://arucotag/4x4_1000-6.png</albedo_map>
+              <albedo_map>model://arucotag/aruco-6.png</albedo_map>
             </metal>
           </pbr>
+          <ambient>1 1 1 1</ambient>
+          <diffuse>1 1 1 1</diffuse>
+          <specular>0 0 0 1</specular>
         </material>
       </visual>
     </link>
-  </model>
-</sdf>
+  </model> </sdf>

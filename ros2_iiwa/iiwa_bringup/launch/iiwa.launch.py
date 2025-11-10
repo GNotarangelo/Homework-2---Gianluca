@@ -405,8 +405,8 @@ def generate_launch_description():
         # The node should run only in simulation or when not using MoveIt planning/servoing
         condition=UnlessCondition(OrSubstitution(use_planning, use_servoing)),
     )
-
-
+       
+	
     # Delay `joint_state_broadcaster` after spawn_entity
     delay_joint_state_broadcaster_spawner_after_spawn_entity = RegisterEventHandler(
         event_handler=OnProcessExit(
