@@ -33,13 +33,11 @@ public:
                            double _Kdo);
                            
     Eigen::VectorXd velocity_ctrl_null(KDL::Frame &_desPos,
-                                         double _Kpp, double _Kpo);
+                                         double _Kpp);
                                          
     //Vision Control
     Eigen::MatrixXd getCameraJacobian();
     Eigen::VectorXd vision_ctrl(const KDL::Frame& cPo_frame);
-
-
 
 private:
 

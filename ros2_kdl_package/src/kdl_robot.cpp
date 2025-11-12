@@ -32,8 +32,7 @@ KDLRobot::KDLRobot(KDL::Tree &robot_tree)
     // q_max_.data <<  2.96,2.09,2.96,2.09,2.96,2.09,2.96; //2*M_PI, 2*M_PI; // TODO: read from file          
   
     ikVelSol_ = new KDL::ChainIkSolverVel_pinv(chain_); //Inverse velocity solver 
-    
-    // Vision Control: Initialize the EE to Camera transformation (values from URDF)
+
     ee_T_camera_ = KDL::Frame(
         KDL::Rotation::RPY(3.14, 0.0, 0.0),
         KDL::Vector(0.0, 0.0, 0.17)   
@@ -192,11 +191,6 @@ KDL::Frame KDLRobot::getEEFrame()
     return s_F_ee_;
 }
 
-// Vision Control: Get the fixed EE to Camera transformation
-KDL::Frame KDLRobot::getEECameraFrameOffset() const
-{
-    return ee_T_camera_;
-}
 
 KDL::Twist KDLRobot::getEEVelocity()
 {
@@ -261,4 +255,13 @@ std::string KDLRobot::strError(const int error) {
   default: return "UNKNOWN ERROR";
   }
   // clang-format on
+}
+
+KDL::Frame KDLRobot::getEECameraFrameOffset() const
+{
+    
+    KDL::Frame camera_offset;
+    camera_offset.p = KDL::Vector(0.0, 0.0, 0.1); 
+    camera_offset.M = KDL::Rotation::Identity();
+    return camera_offset;
 }

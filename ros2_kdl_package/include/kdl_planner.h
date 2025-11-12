@@ -31,9 +31,7 @@ class KDLPlanner
 {
 
 public:
-    ///////////////////////////
-    //      Constructors     //
-    ///////////////////////////
+    
     KDLPlanner();
     KDLPlanner(double _maxVel, double _maxAcc);
     KDLPlanner(double _trajDuration, double _accDuration,
@@ -41,9 +39,7 @@ public:
 
     KDLPlanner(double _trajDuration, Eigen::Vector3d _trajInit, double _trajRadius, double _accDuration = 0.5);
 
-    ///////////////////////////
-    // Create trajectories   //
-    ///////////////////////////
+    
     void CreateTrajectoryFromFrames(std::vector<KDL::Frame> &_frames,
                                     double _radius, double _eqRadius);
     void createCircPath(KDL::Frame &_F_start,
@@ -64,12 +60,8 @@ public:
 
     KDL::Trajectory* getTrajectory();
 
-    //////////////////////////////////
     trajectory_point compute_trajectory(double time);
 
-    ///////////////////////////
-    // Trapezoidal and Cubic //
-    ///////////////////////////
     void trapezoidal_vel(double t, double t_c, double &s, double &s_dot, double &s_ddot);
     void cubic_polynomial(double t, double &s, double &s_dot, double &s_ddot);
 
@@ -80,7 +72,6 @@ private:
 	KDL::VelocityProfile* velpref_;
 	KDL::Trajectory* traject_;
 
-    //////////////////////////////////
     double trajDuration_;
     double accDuration_;
     double trajRadius_;

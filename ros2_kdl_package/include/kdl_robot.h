@@ -61,10 +61,10 @@ public:
     
     //Vision Control
     KDL::Frame getEECameraFrameOffset() const;
-    
+
     // inverse kinematics
     void getInverseKinematics(KDL::Frame &f, KDL::JntArray &q);                           
-    
+
 private:
 
     // chain
@@ -100,10 +100,11 @@ private:
     KDL::Jacobian s_J_dot_ee_;      // end-effector Jacobian dot in spatial frame
     KDL::Jacobian b_J_dot_ee_;      // end-effector Jacobian dot in body frame
     KDL::Twist s_J_dot_q_dot_ee_;   // end-effector Jdot*qdot in spatial frame
-	
+    
+    
     //Vision Control
     KDL::Frame ee_T_camera_;
-    
+
     std::string strError(const int error);
 
 };

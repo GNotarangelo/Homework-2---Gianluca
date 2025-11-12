@@ -6,7 +6,6 @@
 #include <iostream>
 
 
-//Calculates joint velocities (q_dot_0) to push joints away from limits.
 
 Eigen::VectorXd compute_jnt_limit_avoidance(KDLRobot* robot_)
 {
@@ -15,7 +14,7 @@ Eigen::VectorXd compute_jnt_limit_avoidance(KDLRobot* robot_)
     int n = robot_->getNrJnts();
     Eigen::VectorXd q = robot_->getJntValues(); 
     Eigen::MatrixXd limits = robot_->getJntLimits(); 
-    double epsilon = 1e-9; 
+    double epsilon = 1e-3; 
 
     Eigen::VectorXd q_dot_s0(n);
     q_dot_s0.setZero();
@@ -30,11 +29,17 @@ Eigen::VectorXd compute_jnt_limit_avoidance(KDLRobot* robot_)
         double to_max = q_max - q_i;
         double to_min = q_i - q_min;
 
-        double numerator_term = (q_i - q_min) - (q_max - q_i);
-        double numerator = (range * range) * numerator_term;
-        double denominator = (to_max * to_min) * (to_max * to_min);
+        // Check for denominator approaching zero
+        double den_sqrt = to_max * to_min;
+        if (std::abs(den_sqrt) < epsilon) {
+            continue; // Avoid division by zero
+        }
 
-        // Gradient of the redundancy measure (H), scaled.
+        double numerator_term = (q_i - q_min) - (q_max - q_i); 
+        double numerator = (range * range) * numerator_term;
+        double denominator = den_sqrt * den_sqrt; 
+
+        
         q_dot_s0(i) = (1.0 / lambda) * (numerator / (denominator + epsilon));
     }
     return q_dot_s0;
@@ -69,167 +74,203 @@ Eigen::VectorXd KDLController::idCntr(KDL::Frame &_desPos,
                                       double _Kpp, double _Kpo,
                                       double _Kdp, double _Kdo)
 {
-    Eigen::VectorXd q_dot_cmd;
-    q_dot_cmd.resize(robot_->getNrJnts());
-    q_dot_cmd.setZero();
+    
+}
+
+Eigen::VectorXd KDLController::velocity_ctrl_null(KDL::Frame &_desPos,
+                                                   double _Kpp)
+{
+    // Current state and jacobian
+    KDL::Frame    x_curr = robot_->getEEFrame();
+    KDL::Jacobian J      = robot_->getEEJacobian();
+    Eigen::MatrixXd J_eigen = J.data;
+    
+    // computing pose error
+    KDL::Twist error_pose = KDL::diff(x_curr, _desPos);
+    
+    // Computing command velocity
+    Eigen::VectorXd x_dot_cmd_eigen(6);
+    x_dot_cmd_eigen(0) = _Kpp * error_pose.vel.x();
+    x_dot_cmd_eigen(1) = _Kpp * error_pose.vel.y();
+    x_dot_cmd_eigen(2) = _Kpp * error_pose.vel.z();
+    x_dot_cmd_eigen(3) = _Kpp * error_pose.rot.x();
+    x_dot_cmd_eigen(4) = _Kpp * error_pose.rot.y();
+    x_dot_cmd_eigen(5) = _Kpp * error_pose.rot.z();
+    
+    // computing pseudo-inverse with damping for robustness
+    int n = robot_->getNrJnts();
+    double damping = 0.01;  // Small damping factor
+    Eigen::MatrixXd J_pinv;
+    
+    // Use SVD for a more robust pseudo-inverse
+    Eigen::JacobiSVD<Eigen::MatrixXd> svd(J_eigen, Eigen::ComputeThinU | Eigen::ComputeThinV);
+    Eigen::VectorXd singularValues = svd.singularValues();
+    Eigen::MatrixXd S_inv = Eigen::MatrixXd::Zero(svd.matrixV().cols(), svd.matrixU().rows());
+    for (int i = 0; i < singularValues.size(); ++i) {
+        S_inv(i, i) = singularValues(i) / (singularValues(i) * singularValues(i) + damping * damping);
+    }
+    J_pinv = svd.matrixV() * S_inv * svd.matrixU().transpose();
+    
+    
+    // Computing joint velocities
+    Eigen::VectorXd q_dot_task = J_pinv * x_dot_cmd_eigen;
+    
+    // optimizing second objective exploiting null space
+    Eigen::VectorXd q_dot_s0 = compute_jnt_limit_avoidance(robot_);
+    
+    // computing null space projector
+    Eigen::MatrixXd I_n = Eigen::MatrixXd::Identity(n, n);
+    Eigen::MatrixXd P = I_n - (J_pinv * J_eigen); 
+    
+    // putting everything together
+    Eigen::VectorXd q_dot_cmd = q_dot_task + (P * q_dot_s0);
+    
+    // Final safety: limit overall joint velocities
+    double max_joint_vel = 1.0;  // rad/s
+    for (int i = 0; i < n; ++i) {
+        if (std::abs(q_dot_cmd(i)) > max_joint_vel) {
+            q_dot_cmd(i) = (q_dot_cmd(i) > 0) ? max_joint_vel : -max_joint_vel;
+        }
+    }
+    
     return q_dot_cmd;
 }
 
-
-// Calculates the Camera Jacobian Jc = R_C_EE * J_EE.
-
 Eigen::MatrixXd KDLController::getCameraJacobian() {
     
-    // 1. Get the EE Jacobian (J_EE) in the base frame
+    // 1. Get the EE Jacobian (J_base_EE)
     Eigen::MatrixXd J_EE = robot_->getEEJacobian().data; 
     
-    // 2. Get the fixed transformation from EE to Camera (T_EE_C)
-    KDL::Frame T_EE_C_KDL = robot_->getEECameraFrameOffset(); 
-    
-    // 3. Extract the rotation R_EE_C (Rotation of Camera in EE frame)
-    Eigen::Matrix3d R_EE_C = toEigen(T_EE_C_KDL.M); 
-    
-    // 4. Calculate R_C_EE = R_EE_C^T
-    Eigen::Matrix3d R_C_EE = R_EE_C.transpose();
+    // 2. Get the *current* EE pose (T_base_EE) to find its orientation
+    KDL::Frame T_base_EE = robot_->getEEFrame();
+    Eigen::Matrix3d R_base_EE = toEigen(T_base_EE.M);
 
-    // 5. Construct the 6x6 spatial transformation matrix (R)
-    // R maps EE spatial velocity (in base frame) to Camera spatial velocity (in camera frame)
-    Eigen::MatrixXd R(6, 6);
-    R.setZero();
-    R.block<3, 3>(0, 0) = R_C_EE; // Rotation for linear velocity
-    R.block<3, 3>(3, 3) = R_C_EE; // Rotation for angular velocity
+    // 3. Get the *static* offset from EE to Camera (T_EE_cam)
+    KDL::Frame T_EE_Camera = robot_->getEECameraFrameOffset(); 
+    Eigen::Vector3d p_EE_cam_in_EE = toEigen(T_EE_Camera.p); // p_EE_cam (expressed in EE frame)
+    
+    // 4. Calculate the vector from EE to Camera in the base frame
+    Eigen::Vector3d p_EE_cam_in_base = R_base_EE * p_EE_cam_in_EE;
+    
+    
+    Eigen::MatrixXd X_EE_cam(6, 6);
+    X_EE_cam.setIdentity();
+    X_EE_cam.block<3, 3>(0, 3) = -skew(p_EE_cam_in_base); 
 
-    // Jc = R * J_EE (relates joint velocity to camera spatial velocity)
-    Eigen::MatrixXd J_c = R * J_EE;
+    // 6. Calculate the final Camera Jacobian
+    Eigen::MatrixXd J_c = X_EE_cam * J_EE;
+    
     return J_c;
 }
 
 
-//Implements the vision-based Look-At-Point controller.
-// q_dot = K * (L(s)Jc)† * error + N * q_dot_0
-// cPo_frame: Pose of the marker (Object O) relative to the Camera (C).
-
-Eigen::VectorXd KDLController::vision_ctrl(const KDL::Frame& cPo_frame) {
+Eigen::VectorXd KDLController::vision_ctrl(const KDL::Frame& imagePo_frame) {
     
-    // 1. Extract and Convert Data
-    Eigen::Vector3d cPo = toEigen(cPo_frame.p);
-    Eigen::Matrix3d Rc = toEigen(cPo_frame.M); 
-    double norm_cPo = cPo.norm();
     int n = robot_->getNrJnts();
-
-    // Safety check: ensure the marker is not at the camera center
-    if (norm_cPo < 1e-6) {
-        std::cerr << "[VISION_CTRL ERROR] Marker too close to camera center. Returning zero velocity." << std::endl;
-        Eigen::VectorXd zero_cmd(n);
-        zero_cmd.setZero();
-        return zero_cmd;
+    
+    // Step 1: Extract cPo from ArUco 
+    Eigen::Vector3d cPo = toEigen(imagePo_frame.p);
+    double norm_cPo = cPo.norm();
+    
+    // Safety check
+    if (norm_cPo < 0.05) { // 5 cm
+        std::cerr << "[VISION] ERROR: Marker too close! (Dist: " << norm_cPo << "m)" << std::endl;
+        return Eigen::VectorXd::Zero(n);
     }
     
-    // 2. Compute the feature vector 's' (Equation 4)
-    Eigen::Vector3d s = cPo / norm_cPo; 
-    Eigen::Vector3d sd; sd << 0.0, 0.0, 1.0; // Desired feature vector (look straight along Z-axis)
+    if (cPo.z() < 0.05) {
+        std::cerr << "[VISION] ERROR: Marker behind camera or too close!" << std::endl;
+        return Eigen::VectorXd::Zero(n);
+    }
     
-    // 3. Compute the L(s) matrix (Image Jacobian part) (Equation 5)
+    
+    // Step 2: Compute s 
+    Eigen::Vector3d s = cPo / norm_cPo;
+    Eigen::Vector3d s_desired(0.0, 0.0, 1.0);  // Marker centered along Z
+    
+    // error
+    Eigen::Vector3d error = s_desired - s;
+    double error_norm = error.norm();
+    
+    //marker centered
+    double error_threshold = 0.02;
+    if (error_norm < error_threshold) {
+        return Eigen::VectorXd::Zero(n);
+    }
+    
+ 
+    // Step 3: Get current camera rotation Rc 
+    // Get current camera pose
+    KDL::Frame T_base_EE = robot_->getEEFrame();
+    KDL::Frame T_EE_Camera = robot_->getEECameraFrameOffset();
+    KDL::Frame T_base_Camera = T_base_EE * T_EE_Camera;
+    
+    Eigen::Matrix3d Rc = toEigen(T_base_Camera.M);  // Camera rotation in base frame
+    Eigen::Matrix3d Rc_T = Rc.transpose();
+    
+    // Build R matrix from Equation 5: R = [Rc^T  0; 0  Rc^T]
+    Eigen::MatrixXd R_matrix(6, 6);
+    R_matrix.setZero();
+    R_matrix.block<3, 3>(0, 0) = Rc_T;
+    R_matrix.block<3, 3>(3, 3) = Rc_T;
+    
+    
+    // Step 4: Compute L(s)
+    // L(s) = [-(1/||cPo||)(I - ss^T) | S(s)] * R
     Eigen::Matrix3d I_3 = Eigen::Matrix3d::Identity();
+    Eigen::Matrix3d I_minus_ssT = I_3 - s * s.transpose();
     
-    // R_6 matrix (Transformation of spatial velocity into camera frame)
-    Eigen::MatrixXd R_6(6, 6);
-    R_6.setZero();
-    R_6.block<3, 3>(0, 0) = Rc.transpose(); 
-    R_6.block<3, 3>(3, 3) = Rc.transpose(); 
-
-    // Inner term of L(s) (Maps camera velocity to feature velocity)
     Eigen::Matrix<double, 3, 6> L_inner;
+    L_inner.block<3, 3>(0, 0) = -(1.0 / norm_cPo) * I_minus_ssT;
+    L_inner.block<3, 3>(0, 3) = skew(s);
     
-    // Term 1: Linear velocity part (Translational)
-    Eigen::Matrix3d P_s = I_3 - s * s.transpose(); // Projection matrix (I - s*s^T)
-    L_inner.block<3, 3>(0, 0) = - (1.0 / norm_cPo) * P_s; 
+    // Apply R matrix: L(s) = L_inner * R
+    Eigen::Matrix<double, 3, 6> L_s = L_inner * R_matrix;
     
-    // Term 2: Angular velocity part (Rotational)
-    L_inner.block<3, 3>(0, 3) = - (1.0 / norm_cPo) * P_s * skew(s); 
-
-    // L(s) = L_inner * R_6
-    Eigen::Matrix<double, 3, 6> L_s = L_inner * R_6; 
-
-    // 4. Compute the Full Image Jacobian L(s)Jc
-    Eigen::MatrixXd Jc = getCameraJacobian(); 
-    Eigen::MatrixXd ImageJacobian = L_s * Jc; 
-
-    // 5. Compute Control Error and Gains
-    Eigen::Vector3d error = sd - s; // Control error in feature space (s_d - s)
     
-    // Use a fixed scalar gain Kp_scalar=5.0 for simplicity, assuming this is read from ROS Kp parameter
-    double Kp_scalar = 5.0; 
-    Eigen::VectorXd K_mat = Kp_scalar * Eigen::VectorXd::Ones(n);
-    Eigen::MatrixXd K = K_mat.asDiagonal(); // Diagonal gain matrix K
-
-    // 6. Compute Pseudoinverse and Null-Space Projector
-    Eigen::MatrixXd pseudoInverse = pseudoinverse(ImageJacobian);
-    Eigen::MatrixXd N = Eigen::MatrixXd::Identity(n, n) - pseudoInverse * ImageJacobian; // Null-Space Projector N
+    Eigen::MatrixXd J_c = getCameraJacobian(); 
     
-    // 7. Secondary Task (q_dot_0)
-    Eigen::VectorXd q_dot_s0 = compute_jnt_limit_avoidance(robot_); 
     
-    // 8. Apply Control Law (Equation 3)
-    // q_dot = K * (L(s)Jc)† * error + N * q_dot_0
+    // Step 6: Compute L(s)Jc
+    Eigen::MatrixXd L_Jc = L_s * J_c;
     
-    Eigen::VectorXd q_dot_primary = K * pseudoInverse * error; 
-    Eigen::VectorXd q_dot_secondary = N * q_dot_s0;
-
-    Eigen::VectorXd q_dot_cmd = q_dot_primary + q_dot_secondary;
-
-    return q_dot_cmd;
-}
-
-Eigen::VectorXd KDLController::velocity_ctrl_null(KDL::Frame &_desPos,
-                                         double _Kpp, double _Kpo)
-{
-
-    // === PASSO 1: CALCOLARE LA SOLUZIONE DEL TASK PRIMARIO ===
     
-    // 1a. Ottieni stato attuale e Jacobiano
-    KDL::Frame    x_curr = robot_->getEEFrame();
-    KDL::Jacobian J      = robot_->getEEJacobian();
-    Eigen::MatrixXd J_eigen = J.data;
-    int n = robot_->getNrJnts();
-
-    // 1b. Calcola errore di posa
-    KDL::Twist error_pose = KDL::diff(x_curr, _desPos);
-
-    // 1c. Calcola velocità di comando (proporzionale)
-    KDL::Twist x_dot_cmd_kdl;
-    x_dot_cmd_kdl.vel = _Kpp * error_pose.vel;
-    x_dot_cmd_kdl.rot = _Kpo * error_pose.rot;
-
-    Eigen::VectorXd x_dot_cmd_eigen(6);
-    x_dot_cmd_eigen(0) = x_dot_cmd_kdl.vel.x();
-    x_dot_cmd_eigen(1) = x_dot_cmd_kdl.vel.y();
-    x_dot_cmd_eigen(2) = x_dot_cmd_kdl.vel.z();
-    x_dot_cmd_eigen(3) = x_dot_cmd_kdl.rot.x();
-    x_dot_cmd_eigen(4) = x_dot_cmd_kdl.rot.y();
-    x_dot_cmd_eigen(5) = x_dot_cmd_kdl.rot.z();
-
-    // 1d. Calcola pseudo-inversa J_pinv (J_dagger) con SVD
-    Eigen::MatrixXd J_pinv = pseudoinverse(J_eigen);
-
-    // 1e. Calcola velocità giunti per il task primario
-    Eigen::VectorXd q_dot_task = J_pinv * x_dot_cmd_eigen;
-
-
-    // === PASSO 2: CALCOLARE VELOCITÀ SPAZIO NULLO (Eq. 2) ===
-    Eigen::VectorXd q_dot_s0 = compute_jnt_limit_avoidance(robot_);
-
-
-    // === PASSO 3: CALCOLARE PROIETTORE SPAZIO NULLO ===
+    // Step 7: Compute damped pseudoinverse (L(s)Jc)†
     
+    double damping = 0.05;
+    Eigen::MatrixXd L_Jc_T = L_Jc.transpose();
+    Eigen::MatrixXd A = L_Jc * L_Jc_T + damping * Eigen::Matrix3d::Identity();
+    Eigen::MatrixXd L_Jc_pinv = L_Jc_T * A.inverse();
+    
+    // Step 8: Compute null-space projector N = I - (L(s)Jc)†L(s)Jc
     Eigen::MatrixXd I_n = Eigen::MatrixXd::Identity(n, n);
-    Eigen::MatrixXd P = I_n - (J_pinv * J_eigen); // Proiettore (I - J_dagger * J)
-
-
-    // === PASSO 4: COMBINARE TUTTO (Eq. 1) ===
-
-    Eigen::VectorXd q_dot_cmd = q_dot_task + (P * q_dot_s0);
-
+    Eigen::MatrixXd N = I_n - L_Jc_pinv * L_Jc;
+    
+    // Step 9: Secondary task q_dot_0 (joint limit avoidance )
+    Eigen::VectorXd q_dot_0 = compute_jnt_limit_avoidance(robot_);
+    
+    // Clamp secondary task to reasonable values (prevent dominance)
+    double max_secondary = 0.1;
+    q_dot_0 = q_dot_0.cwiseMax(-max_secondary).cwiseMin(max_secondary);
+    
+    
+    // Step 10: Build gain matrix K (diagonal)
+    double k_gain = 2; 
+    
+    // Step 11: Apply control law 
+    // q_dot = K(L(s)Jc)† * (sd - s) + N * q_dot_0
+    Eigen::VectorXd q_dot_primary = k_gain * L_Jc_pinv * error;
+    Eigen::VectorXd q_dot_secondary = N * q_dot_0;
+    Eigen::VectorXd q_dot_cmd = q_dot_primary + q_dot_secondary;
+    
+    // Step 12: Velocity saturation for safety
+    double max_joint_vel = 1; // rad/s
+    for (int i = 0; i < n; ++i) {
+        if (std::abs(q_dot_cmd(i)) > max_joint_vel) {
+            q_dot_cmd(i) = (q_dot_cmd(i) > 0) ? max_joint_vel : -max_joint_vel;
+        }
+    }
+    
+    
     return q_dot_cmd;
 }
-

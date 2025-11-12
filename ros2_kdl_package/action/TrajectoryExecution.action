@@ -1,0 +1,17 @@
+# Goal - what the client sends to request trajectory execution
+float64 traj_duration      # Duration of the trajectory in seconds
+float64 acc_duration       # Acceleration duration in seconds
+float64[] end_position     # Target end-effector position [x, y, z]
+string traj_type          # "linear" or "circular"
+string s_type             # "trapezoidal" or "cubic"
+---
+# Result - what the server returns when the action is complete
+bool success              # True if trajectory completed successfully
+float64 final_error_norm  # Norm of final position error
+float64 execution_time    # Actual execution time
+---
+# Feedback - periodic updates during execution
+float64[] position_error  # Current position error [x, y, z]
+float64 error_norm        # Norm of position error
+float64 elapsed_time      # Time elapsed since start
+float64 progress          # Progress percentage (0-100)

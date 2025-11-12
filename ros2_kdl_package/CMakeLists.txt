@@ -14,10 +14,36 @@ find_package(kdl_parser REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(tf2_kdl REQUIRED)
+
+find_package(rosidl_default_generators REQUIRED)
+find_package(rclcpp_action REQUIRED)
+find_package(rclcpp_components REQUIRED)
 
 # uncomment the following section in order to fill in
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
+
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "action/TrajectoryExecution.action"
+  DEPENDENCIES std_msgs
+)
+
+add_executable(trajectory_client src/trajectory_client.cpp)
+
+ament_target_dependencies(trajectory_client
+  rclcpp
+  rclcpp_action
+  rclcpp_components
+)
+
+# Link the generated action interfaces
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+target_link_libraries(trajectory_client "${cpp_typesupport_target}")
+
+
 
 add_executable(ros2_kdl_node src/ros2_kdl_node.cpp src/kdl_robot.cpp src/kdl_planner.cpp src/kdl_control.cpp)
 target_include_directories(ros2_kdl_node PUBLIC
@@ -31,9 +57,20 @@ ament_target_dependencies(ros2_kdl_node
   rclcpp
   kdl_parser
   sensor_msgs
-  std_msgs)
+  std_msgs
+  rclcpp_action
+  rclcpp_components
+  tf2_ros
+  tf2_geometry_msgs
+  tf2_kdl)
 
-install(TARGETS ros2_kdl_node
+# Link the generated action interfaces
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+target_link_libraries(ros2_kdl_node "${cpp_typesupport_target}")
+
+install(TARGETS 
+  ros2_kdl_node
+  trajectory_client
   DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY
@@ -71,5 +108,8 @@ if(BUILD_TESTING)
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 endif()
+
+
+
 
 ament_package()

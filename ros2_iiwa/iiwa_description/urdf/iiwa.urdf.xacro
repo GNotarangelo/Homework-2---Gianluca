@@ -3,7 +3,7 @@
 
   <xacro:macro name="iiwa" params="parent prefix *origin">
   <xacro:include filename="$(find iiwa_description)/gazebo/urdf/iiwa_camera.xacro" />
-  
+
   <material name="gray">
     <color rgba="0.5 0.5 0.5 1.0"/>
   </material>
@@ -176,13 +176,13 @@
       </inertial>
   </link>
   <link name="${prefix}tool0"/>
-  
+
   <xacro:iiwa_camera
     link_name="camera_link"
     joint_name="camera_joint"
     parent_link="${prefix}link_7"
-    xyz="0.0 0.0 0.17"
-    rpy="3.14 0 0"
+    xyz="0.0 0.0 0.18"
+    rpy="0 -1.57 3.14"
   />
 
   <joint name="${prefix}joint_a1" type="revolute">

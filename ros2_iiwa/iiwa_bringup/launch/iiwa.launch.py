@@ -154,14 +154,7 @@ def generate_launch_description():
             description='Configuration file of robot base frame wrt World.',
         )
     )
-    #Vision Control
-    declared_arguments.append(
-        DeclareLaunchArgument(
-            'vision_control',
-            default_value='false',
-            description='If true, runs the ros2_kdl_node in vision control mode.',
-        )
-    )
+    
 
     # Initialize Arguments
     runtime_config_package = LaunchConfiguration('runtime_config_package')
@@ -181,7 +174,7 @@ def generate_launch_description():
     command_interface = LaunchConfiguration('command_interface')
     base_frame_file = LaunchConfiguration('base_frame_file')
     namespace = LaunchConfiguration('namespace')
-    vision_control = LaunchConfiguration('vision_control') # Vision Control
+    
 
     # Get URDF via xacro
     robot_description_content = Command(
@@ -354,18 +347,7 @@ def generate_launch_description():
         condition=IfCondition(use_sim),
     )
     
-    # Camera bridge
-    camera_bridge = Node(
-        package='ros_gz_bridge',
-        executable='parameter_bridge',
-        name='camera_bridge',
-        arguments=[
-            '/camera@sensor_msgs/msg/Image@ignition.msgs.Image',
-            '/camera_info@sensor_msgs/msg/CameraInfo@ignition.msgs.CameraInfo'
-        ],
-        output='screen',
-        condition=IfCondition(use_sim), # Only bridge if in simulation
-    )
+    
 
     joint_state_broadcaster_spawner = Node(
         package='controller_manager',
@@ -388,23 +370,7 @@ def generate_launch_description():
         arguments=[robot_controller, '--controller-manager', [namespace, 'controller_manager']],
     )
     
-    # Vision Control
-    kdl_control_node = Node(
-        package='ros2_kdl_package',
-        executable='ros2_kdl_node', 
-        name='ros2_kdl_node',
-        output='screen',
-        namespace=namespace,
-        parameters=[
-            {
-		'cmd_interface': PythonExpression([
-    		"'vision' if '", vision_control, "' == 'true' else '", command_interface, "'"
-		])
-            },
-        ],
-        # The node should run only in simulation or when not using MoveIt planning/servoing
-        condition=UnlessCondition(OrSubstitution(use_planning, use_servoing)),
-    )
+    
        
 	
     # Delay `joint_state_broadcaster` after spawn_entity
@@ -442,13 +408,6 @@ def generate_launch_description():
         )
     )
     
-    # Vision Control
-    delay_kdl_control_node_after_controller_spawner = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=robot_controller_spawner,
-            on_exit=[kdl_control_node],
-        )
-    )
 
     nodes = [
     	set_model_path,
@@ -457,14 +416,12 @@ def generate_launch_description():
         iiwa_planning_launch,
         iiwa_servoing_launch,
         spawn_entity,
-        camera_bridge,
         robot_state_pub_node,
         delay_joint_state_broadcaster_spawner_after_control_node,
         delay_joint_state_broadcaster_spawner_after_spawn_entity,
         delay_rviz_after_joint_state_broadcaster_spawner,
         external_torque_broadcaster_spawner,
         delay_robot_controller_spawner_after_joint_state_broadcaster_spawner,
-        delay_kdl_control_node_after_controller_spawner,
     ]
 
     return LaunchDescription(declared_arguments + nodes)
